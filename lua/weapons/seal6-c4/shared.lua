@@ -1,22 +1,22 @@
-
-AddCSLuaFile( "shared.lua" )
+AddCSLuaFile("shared.lua")
 
 SWEP.Author			= "Hoff"
-SWEP.Instructions	= ""
+SWEP.Instructions	= "Left click to detonate placed C4s that produce ACF explosions.\nRight click to throw a C4.\nPress R to pick up your placed C4."
 
-SWEP.Category = "CoD Multiplayer"
+SWEP.Category			= "CoD Multiplayer"
 SWEP.Spawnable			= true
 SWEP.AdminSpawnable		= true
 
 SWEP.ViewModel			= "models/hoff/weapons/c4/c_c4.mdl"
 SWEP.WorldModel			= "models/hoff/weapons/c4/w_c4.mdl"
-SWEP.ViewModelFOV = 75
+SWEP.ViewModelFOV		= 75
+SWEP.UseHands			= true
 
 SWEP.Primary.ClipSize		= -1
 SWEP.Primary.DefaultClip	= 5
 SWEP.Primary.Automatic		= true
-SWEP.Primary.Ammo		= "slam"
-SWEP.Primary.Delay = 1
+SWEP.Primary.Ammo			= "slam"
+SWEP.Primary.Delay			= 0.45
 
 SWEP.Secondary.ClipSize		= -1
 SWEP.Secondary.DefaultClip	= -1
@@ -33,8 +33,6 @@ SWEP.SlotPos			= 1
 SWEP.DrawAmmo			= true
 SWEP.DrawCrosshair		= true
 
-SWEP.UseHands = true
-
 SWEP.Offset = {
 	Pos = {
 		Up = 0,
@@ -47,26 +45,36 @@ SWEP.Offset = {
 		Forward = 190,
 	}
 }
-function SWEP:DrawWorldModel( )
-	if not IsValid( self:GetOwner() ) then
-		self:DrawModel( )
+
+local cvarFlags = { FCVAR_REPLICATED, FCVAR_ARCHIVE }
+local throwSpeedCvar = CreateConVar("C4_ThrowSpeed", 1, cvarFlags, "How long is the delay between C4 throws?", 0.1, 10)
+local infiniteCvar = CreateConVar("C4_Infinite", 0, cvarFlags, "Should C4 be infinite? 1 = infinite", 0, 1)
+local maxCountCvar = CreateConVar("C4_MaxCount", "10", cvarFlags, "The maximum number of C4 that can be deployed at once.")
+
+function SWEP:DrawWorldModel()
+	local owner = self:GetOwner()
+
+	if not IsValid(owner) then
+		self:DrawModel()
 		return
 	end
 
-	local bone = self:GetOwner():LookupBone( "ValveBiped.Bip01_R_Hand" )
+	local bone = owner:LookupBone("ValveBiped.Bip01_R_Hand")
 	if not bone then
-		self:DrawModel( )
+		self:DrawModel()
 		return
 	end
 
-	local pos, ang = self:GetOwner():GetBonePosition( bone )
-	pos = pos + ang:Right() * self.Offset.Pos.Right + ang:Forward() * self.Offset.Pos.Forward + ang:Up() * self.Offset.Pos.Up
-	ang:RotateAroundAxis( ang:Right(), self.Offset.Ang.Right )
-	ang:RotateAroundAxis( ang:Forward(), self.Offset.Ang.Forward )
-	ang:RotateAroundAxis( ang:Up(), self.Offset.Ang.Up )
+	local pos, ang = owner:GetBonePosition(bone)
+	local right, forward, up = ang:Right(), ang:Forward(), ang:Up()
+	local offset = self.Offset
+	pos = pos + right * offset.Pos.Right + forward * offset.Pos.Forward + up * offset.Pos.Up
+	ang:RotateAroundAxis(right, offset.Ang.Right)
+	ang:RotateAroundAxis(forward, offset.Ang.Forward)
+	ang:RotateAroundAxis(up, offset.Ang.Up)
 
-	self:SetRenderOrigin( pos )
-	self:SetRenderAngles( ang )
+	self:SetRenderOrigin(pos)
+	self:SetRenderAngles(ang)
 
 	self:DrawModel()
 end
@@ -80,14 +88,18 @@ function SWEP:Deploy()
 	-- something keeps setting deploy speed to 4, this is a workaround
 	self:SetDeploySpeed(1)
 
-	if not self:GetOwner().C4s or #self:GetOwner().C4s == 0 then
-		self:GetOwner().C4s = {}
+	local owner = self:GetOwner()
+
+	if not owner.C4s or #owner.C4s == 0 then
+		owner.C4s = {}
 	end
+
 	timer.Simple(0.3, function()
 		if IsValid(self) then
 			self:EmitSound("hoff/mpl/seal_c4/bar_selectorswitch.wav", 45)
 		end
 	end)
+
 	self:SetCollisionGroup(COLLISION_GROUP_NONE)
 	self:SetHoldType("Slam")
 
@@ -95,13 +107,13 @@ function SWEP:Deploy()
 end
 
 function SWEP:StartExplosionChain()
-	if table.Count(self:GetOwner().C4s) <= 0 then
-		return
-	end
-	local ent = self:GetOwner().C4s[1] -- Get the first entity in the table
+	local c4s = self:GetOwner().C4s
+	if #c4s <= 0 then return end
+
+	local ent = c4s[1] -- Get the first entity in the table
 
 	if not IsValid(ent) then
-		table.remove(self:GetOwner().C4s, 1)
+		table.remove(c4s, 1)
 		self:StartExplosionChain()
 		return
 	end
@@ -118,7 +130,7 @@ end
 function SWEP:PrimaryAttack()
 	self:SendWeaponAnim(ACT_VM_PRIMARYATTACK)
 
-	timer.Simple(0.1,function()
+	timer.Simple(0.1, function()
 		if IsValid(self) then
 			self:EmitSound("hoff/mpl/seal_c4/c4_click.wav")
 		end
@@ -132,37 +144,37 @@ function SWEP:PrimaryAttack()
 		end)
 	end
 
-	self:SetNextPrimaryFire(CurTime() + 1.1)
+	self:SetNextPrimaryFire(CurTime() + self.Primary.Delay)
 
 	-- Need to stop insane values from crashing servers
-	local ClampedThrowSpeed = math.Clamp(GetConVar("C4_ThrowSpeed"):GetFloat(), 0.25, 10)
+	local ClampedThrowSpeed = math.Clamp(throwSpeedCvar:GetFloat(), 0.25, 10)
 	self:SetNextSecondaryFire(CurTime() + (0.8 / ClampedThrowSpeed))
 end
 
-hook.Add("PlayerDeath", "SetAllC4sUnowned", function(victim, weapon, killer)
+hook.Add("PlayerDeath", "SetAllC4sUnowned", function(victim)
 	if IsValid(victim) and victim:IsPlayer() and victim.C4s and #victim.C4s > 0 then
-		for k,v in pairs(victim.C4s) do
+		for k in pairs(victim.C4s) do
 			victim.C4s[k].ExplodedViaWorld = true
 		end
 	end
 end)
 
 function SWEP:SecondaryAttack()
-	if GetConVar("C4_Infinite"):GetInt() == 0 and self:Ammo1() <= 0 then
-		return
-	end
+	local isInfinite = infiniteCvar:GetBool()
+	if not isInfinite and self:Ammo1() <= 0 then return end
+
+	local owner = self:GetOwner()
+	if owner:GetCount("black_ops_c4s") >= maxCountCvar:GetInt() then return end
 
 	self:SendWeaponAnim(ACT_VM_THROW)
-	self:GetOwner():SetAnimation(PLAYER_ATTACK1)
-
+	owner:SetAnimation(PLAYER_ATTACK1)
 	self:EmitSound("hoff/mpl/seal_c4/whoosh_01.wav")
-	timer.Simple(0.095, function()
-		if not IsValid(self) then
-			return
-		end
-		if SERVER then
 
-			local TargetPosition = self:GetOwner():GetShootPos() + (self:GetOwner():GetRight() * -8) + (self:GetOwner():GetUp() * -1) + (self:GetOwner():GetForward() * 10)
+	timer.Simple(0.095, function()
+		if not IsValid(self) or not IsValid(owner) then return end
+
+		if SERVER then
+			local TargetPosition = owner:GetShootPos() + (owner:GetRight() * -8) + (owner:GetUp() * -1) + (owner:GetForward() * 10)
 
 			local model = "models/hoff/weapons/c4/w_c4.mdl"
 			util.PrecacheModel(model)
@@ -181,52 +193,51 @@ function SWEP:SecondaryAttack()
 			local tr = util.TraceHull({start = TargetPosition, endpos = TargetPosition, mins = mins, maxs = maxs, mask = MASK_BLOCKLOS})
 
 			-- Check if the trace hit something
-			if not self:GetOwner():IsLineOfSightClear(TargetPosition) or tr.Hit then
-				TargetPosition = self:GetOwner():EyePos()
+			if not owner:IsLineOfSightClear(TargetPosition) or tr.Hit then
+				TargetPosition = owner:EyePos()
 			end
 
 			local ent = ents.Create("cod-c4")
-			ent:SetPos(Vector(0,0,0))
-			ent:SetOwner(self:GetOwner())  -- Disables collision between the C4 and its owner
+			ent:SetPos(vector_origin)
+			ent:SetOwner(owner)  -- Disables collision between the C4 and its owner
 			ent:SetPos(TargetPosition)
-			ent:SetAngles(Angle(1,0,0))
+			ent:SetAngles(Angle(1, 0, 0))
 			ent:Spawn()
-			ent:SetOwner(self:GetOwner())  -- Disables collision between the C4 and its owner
-			ent.C4Owner = self:GetOwner()
+			ent.C4Owner = owner
 			ent.ThisTrigger = self
 			ent.ExplodedViaWorld = false
 			ent.QueuedForExplode = false
-			ent.UniqueExplodeTimer = "ExplodeTimer" .. self:GetOwner():SteamID() .. math.Rand(1, 1000)
-			ent:SetNWString("OwnerID", self:GetOwner():SteamID())
+			ent.UniqueExplodeTimer = "ExplodeTimer" .. owner:SteamID() .. math.Rand(1, 1000)
+			ent:SetNWString("OwnerID", owner:SteamID())
 
 			local phys = ent:GetPhysicsObject()
 
 			--phys:SetMass(0.6)
 
 			-- Compensate for the offcenter spawn
-			local aimvector = self:GetOwner():GetAimVector()
+			local aimvector = owner:GetAimVector()
 			local aimangle = aimvector:Angle()
 			aimangle:RotateAroundAxis(aimangle:Up(), -1.5)
 			aimvector = aimangle:Forward()
-			phys:ApplyForceCenter( aimvector * 1500)
+			phys:ApplyForceCenter(aimvector * 1500)
 
 			-- The positive z coordinate emulates the spin from a left underhand throw
-			local angvel = Vector(0, math.random(-5000,-2000), math.random(-100,-900))
+			local angvel = Vector(0, math.random(-5000, -2000), math.random(-100, -900))
 			angvel:Rotate(-1 * ent:EyeAngles())
-			angvel:Rotate(Angle(0, self:GetOwner():EyeAngles().y, 0))
+			angvel:Rotate(Angle(0, owner:EyeAngles().y, 0))
 
-			--local angvel = Vector(0, math.random(-5000,-2000), math.random(-100,-900))
 			angvel.x = math.Clamp(angvel.x, -1000, 1000)
 			angvel.y = math.Clamp(angvel.y, -1000, 1000)
 			angvel.z = math.Clamp(angvel.z, -1000, 1000)
 
-			phys:SetAngleVelocity(Vector(math.Clamp(angvel.x, -2000, 2000), math.Clamp(angvel.y, -2000, 2000), math.Clamp(angvel.z, -2000, 2000)))
+			phys:SetAngleVelocity(angvel)
 
-			table.insert( self:GetOwner().C4s, ent )
+			table.insert(owner.C4s, ent)
+
 			if engine.ActiveGamemode() ~= "nzombies" then
 				undo.Create("C4")
 					undo.AddEntity(ent)
-					undo.SetPlayer(self:GetOwner())
+					undo.SetPlayer(owner)
 					undo.AddFunction(function(UndoFunc)
 						local UndoEnt = UndoFunc.Entities[1]
 
@@ -241,22 +252,22 @@ function SWEP:SecondaryAttack()
 					end)
 				undo.Finish()
 
-				self:GetOwner():AddCount("sents", ent) -- Add to the SENTs count ( ownership )
-				self:GetOwner():AddCount("my_props", ent) -- Add count to our personal count
-				self:GetOwner():AddCleanup("sents", ent) -- Add item to the sents cleanup
-				self:GetOwner():AddCleanup("my_props", ent) -- Add item to the cleanup
+				owner:AddCount("sents", ent) -- Add to the SENTs count ( ownership )
+				owner:AddCount("black_ops_c4s", ent) -- Add count to our personal count
+				owner:AddCleanup("sents", ent) -- Add item to the sents cleanup
+				owner:AddCleanup("black_ops_c4s", ent) -- Add item to the cleanup
 			end
 		end
 
-		if GetConVar("C4_Infinite"):GetInt() == 0 then
-			self:GetOwner():RemoveAmmo(1,"slam")
+		if not isInfinite then
+			owner:RemoveAmmo(1, "slam")
 		end
 	end)
 
-	self:SetNextPrimaryFire(CurTime() + 1.1)
+	self:SetNextPrimaryFire(CurTime() + self.Primary.Delay)
 
 	-- Need to stop insane values from crashing servers
-	local ClampedThrowSpeed = math.Clamp(GetConVar("C4_ThrowSpeed"):GetFloat(), 0.25, 10)
+	local ClampedThrowSpeed = math.Clamp(throwSpeedCvar:GetFloat(), 0.25, 10)
 	self:SetNextSecondaryFire(CurTime() + (0.8 / ClampedThrowSpeed))
 end
 
@@ -272,15 +283,18 @@ function SWEP:Reload()
 
 	-- Trace a line to a hit location and do a sphere trace from there and sort by distance
 	-- We have to do this because GetEyeTrace to a c4 parented to an entity is unreliable
+	local owner = self:GetOwner()
+	local eyePos = owner:EyePos()
 	local trace = util.TraceLine({
-		start = self:GetOwner():EyePos(),
-		endpos = self:GetOwner():EyePos() + self:GetOwner():EyeAngles():Forward() * 85,
-		filter = {self:GetOwner()}
+		start = eyePos,
+		endpos = eyePos + owner:EyeAngles():Forward() * 85,
+		filter = {owner}
 	})
 	local hitPos = trace.HitPos
 	local c4s = ents.FindInSphere(hitPos, 1)
 	table.sort(c4s, function(a, b) return a:GetPos():Distance(hitPos) < b:GetPos():Distance(hitPos) end)
 	local hitEnt = nil
+
 	for _, ent in ipairs(c4s) do
 		if ent:GetClass() == "cod-c4" then
 			hitEnt = ent
@@ -289,48 +303,42 @@ function SWEP:Reload()
 	end
 
 	-- Check if the trace hit an entity and if it is a C4 entity
-	if IsValid(hitEnt) and hitEnt:GetClass() == "cod-c4" and hitEnt:GetNWString("OwnerID") == self:GetOwner():SteamID() then
-		-- Check if the C4 entity is owned by the player
-		--if hitEnt:GetNWString("OwnerID") == self:GetOwner():SteamID() then
+	if not IsValid(hitEnt) or hitEnt:GetClass() ~= "cod-c4"then return end
+	if hitEnt:GetNWString("OwnerID") ~= owner:SteamID() then return end
 
-			if self:GetOwner():EyePos():Distance(hitEnt:GetPos()) > 85 then
-				return
-			end
+	local entPos = hitEnt:GetPos()
+	if eyePos:Distance(entPos) > 85 then return end
 
-			local effectData = EffectData()
-			effectData:SetOrigin(hitEnt:GetPos())
-			util.Effect("inflator_magic", effectData)
+	local effectData = EffectData()
+	effectData:SetOrigin(entPos)
+	util.Effect("inflator_magic", effectData)
 
-			if SERVER then
-				if GetConVar("C4_Infinite"):GetBool() == false then
-					-- Give the player one "Slam" ammo
-					self:GetOwner():GiveAmmo(1, "Slam")
-				end
+	if SERVER then
+		if infiniteCvar:GetBool() == false then
+			-- Give the player one "Slam" ammo
+			owner:GiveAmmo(1, "Slam")
+		end
 
-				-- Remove the C4 entity from the player's C4s array
-				if table.HasValue(self:GetOwner().C4s, hitEnt) then
-					table.RemoveByValue(self:GetOwner().C4s, hitEnt)
-				end
+		-- Remove the C4 entity from the player's C4s array
+		if table.HasValue(owner.C4s, hitEnt) then
+			table.RemoveByValue(owner.C4s, hitEnt)
+		end
 
-				-- Remove the C4 entity from the world
-				hitEnt:Remove()
-			--else
-				--if self.HasContextAnims then
-				--	net.Start("VManip_SimplePlay") 
-				--	net.WriteString("use") 
-				--	net.Send(self.Owner)
-				--end
-			end
-
-			-- Set the reload delay so the player cannot reload again for 0.5 seconds
-			self.ReloadDelay = CurTime() + 0.5
-		--end
+		-- Remove the C4 entity from the world
+		hitEnt:Remove()
+	elseif CLIENT and VManip then
+		VManip:PlayAnim("interactslower")
 	end
+
+	-- Set the reload delay so the player cannot reload again for 0.5 seconds
+	self.ReloadDelay = CurTime() + 0.5
 end
 
+local crosshairMat = Material("models/hoff/weapons/c4/c4_reticle.png")
+
 function SWEP:DoDrawCrosshair(x, y)
-	surface.SetDrawColor( 255, 255, 255, 255 )
-	surface.SetMaterial( Material("models/hoff/weapons/c4/c4_reticle.png") )
-	surface.DrawTexturedRect( ScrW() / 2 - 16, ScrH() / 2 - 16, 32, 32 )
+	surface.SetDrawColor(255, 255, 255, 255)
+	surface.SetMaterial(crosshairMat)
+	surface.DrawTexturedRect(x - 16, y - 16, 32, 32)
 	return true
 end
