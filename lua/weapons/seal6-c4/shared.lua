@@ -3,7 +3,7 @@ AddCSLuaFile("shared.lua")
 SWEP.Author			= "Hoff"
 SWEP.Instructions	= "Left click to detonate placed C4s that produce ACF explosions.\nRight click to throw a C4.\nPress R to pick up your placed C4."
 
-SWEP.Category			= "CoD Multiplayer"
+SWEP.Category			= "Other"
 SWEP.Spawnable			= true
 SWEP.AdminSpawnable		= true
 
