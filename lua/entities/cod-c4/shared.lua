@@ -8,6 +8,8 @@ ENT.AdminSpawnable		= false
 
 function ENT:CanProperty(_, property)
 	if property == "collision" then return false end
+
+	return true
 end
 
 if !ConVarExists("C4_DoorSearchRadius") then
