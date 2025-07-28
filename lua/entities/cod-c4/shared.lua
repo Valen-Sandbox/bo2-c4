@@ -6,6 +6,8 @@ ENT.Author			= "Hoff"
 ENT.Spawnable			= false
 ENT.AdminSpawnable		= false
 
+ENT.ACF_PreventArmoring	= true
+
 local badProperties = {
 	["collision"] = true,
 	["remover"] = true -- This can let people trigger explosions even after the C4 is removed
