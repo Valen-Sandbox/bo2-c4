@@ -6,8 +6,13 @@ ENT.Author			= "Hoff"
 ENT.Spawnable			= false
 ENT.AdminSpawnable		= false
 
+local badProperties = {
+	["collision"] = true,
+	["remover"] = true -- This can let people trigger explosions even after the C4 is removed
+}
+
 function ENT:CanProperty(_, property)
-	if property == "collision" then return false end
+	if badProperties[property] then return false end
 
 	return true
 end
