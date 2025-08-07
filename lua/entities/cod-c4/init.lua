@@ -141,7 +141,7 @@ local Objects = Damage.Objects
 
 function ENT:Explode(bTriggeredByOwner)
 	local expPos = self:LocalToWorld(self:OBBCenter())
-	local dmgInfo = Objects.DamageInfo(self, self:CPPIGetOwner())
+	local dmgInfo = Objects.DamageInfo(self:CPPIGetOwner(), self)
 	local fillerMass = 0.3
 	local fragMass = 0.5
 
